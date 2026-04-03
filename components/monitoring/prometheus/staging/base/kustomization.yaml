@@ -5,7 +5,9 @@ resources:
 - ../../base/external-secrets
 - ../../base/observability-operator
 - ../../base/rbac
+- ../../base/custom-modifications
 - monitoringstack/
+- ../../base/tekton-ms
 
 patches:
   - path: rhobs-secret-path.yaml
@@ -13,5 +15,5 @@ patches:
       name: rhobs
       kind: ExternalSecret
       group: external-secrets.io
-      version: v1beta1
+      version: v1
   - path: rbac-path.yaml

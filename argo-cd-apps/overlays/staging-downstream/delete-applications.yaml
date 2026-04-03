@@ -10,4 +10,3 @@ kind: ApplicationSet
 metadata:
   name: quality-dashboard
 $patch: delete
----

@@ -3,13 +3,13 @@ kind: Kustomization
 resources:
 - ../../base
 - ../../base/external-secrets
-- https://github.com/konflux-ci/integration-service/config/default?ref=3ee65a7c333e86e6bc561a45e64b0c40312d20c4
-- https://github.com/konflux-ci/integration-service/config/snapshotgc?ref=3ee65a7c333e86e6bc561a45e64b0c40312d20c4
+- https://github.com/konflux-ci/integration-service/config/default?ref=b066b4051d1010fa09894f6ccc741bf839151baa
+- https://github.com/konflux-ci/integration-service/config/snapshotgc?ref=b066b4051d1010fa09894f6ccc741bf839151baa
 
 images:
 - name: quay.io/konflux-ci/integration-service
   newName: quay.io/konflux-ci/integration-service
-  newTag: 3ee65a7c333e86e6bc561a45e64b0c40312d20c4
+  newTag: b066b4051d1010fa09894f6ccc741bf839151baa
 
 configMapGenerator:
 - name: integration-config
@@ -35,5 +35,5 @@ patches:
       name: pipelines-as-code-secret
       kind: ExternalSecret
       group: external-secrets.io
-      version: v1beta1
+      version: v1
   - path: manager_resources_patch.yaml

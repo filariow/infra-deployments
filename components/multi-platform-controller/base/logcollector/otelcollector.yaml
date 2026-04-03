@@ -1,5 +1,5 @@
 ---
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: otelcol-config
@@ -13,15 +13,15 @@ spec:
   data:
     - secretKey: endpoint
       remoteRef:
-        key: staging/infrastructure/splunk/external_endpoint
+        key: production/infrastructure/splunk/external_endpoint
         property: splunk_endpoint
     - secretKey: token
       remoteRef:
-        key: staging/infrastructure/splunk/external_endpoint
+        key: production/infrastructure/splunk/external_endpoint
         property: splunk_hec_token
     - secretKey: index
       remoteRef:
-        key: staging/infrastructure/splunk/external_endpoint
+        key: production/infrastructure/splunk/external_endpoint
         property: splunk_index
   refreshInterval: 1h
   secretStoreRef:
@@ -57,7 +57,7 @@ spec:
                 max_elapsed_time: 10m
           extensions:
             file_storage/otc:
-              directory: /var/lib/otelcol-contrib/queue
+              directory: /tmp/otelcollector/oteltmp
               timeout: 10s
               create_directory: true
           processors:
@@ -69,12 +69,18 @@ spec:
                     - set(attributes["com.splunk.source"], attributes["log.file.path"])
                     - set(attributes["host.name"], resource.attributes["host.name"])
                     - set(attributes["appcode"], resource.attributes["appcode"])
-                    - keep_keys(attributes, ["com.splunk.source", "host.name", "appcode", "com.splunk.index", "com.splunk.sourcetype"])
+                    - set(attributes["instance.tag"], resource.attributes["instance.tag"])
+                    - keep_keys(attributes, ["com.splunk.source", "host.name", "appcode", "instance.tag", "com.splunk.index", "com.splunk.sourcetype"])
             resource/add_appcode:
               attributes:
                 - action: insert
                   key: appcode
                   value: "ASSH-001"
+            resource/add_instance_tag:
+              attributes:
+                - action: insert
+                  key: instance.tag
+                  value: ${env:INST_TAG:-default}
             resourcedetection/system:
               attributes:
                 - host.name
@@ -109,12 +115,15 @@ spec:
                   field: attributes["com.splunk.sourcetype"]
                   value: audit
                   on_error: send
-            filelog/{{ .index }}_messages:
-              include:
-                - /var/log/messages
-              include_file_path: true
-              exclude_older_than: 86400s
+            journald/{{ .index }}_messages:
               operators:
+                  # Prevent logs feedback loop
+                - type: filter
+                  id: drop_otelcol
+                  expr: 'attributes["_SYSTEMD_UNIT"] == nil || attributes["_SYSTEMD_UNIT"] != "otelcol-contrib.service"'
+                - type: filter
+                  id: messages_filter
+                  expr: 'attributes["SYSLOG_IDENTIFIER"] != nil'
                 - type: add
                   id: {{ .index }}_idx
                   field: attributes["com.splunk.index"]
@@ -125,14 +134,17 @@ spec:
                   field: attributes["com.splunk.sourcetype"]
                   value: messages
                   on_error: send
-            filelog/{{ .index }}_secure:
-              include:
-                - /var/log/secure
-              include_file_path: true
-              exclude_older_than: 86400s
+            journald/{{ .index }}_secure:
               operators:
+                - type: filter
+                  id: secure_filter
+                  expr: |
+                    attributes["SYSLOG_IDENTIFIER"] == "sshd" ||
+                    attributes["SYSLOG_IDENTIFIER"] == "sudo" ||
+                    attributes["SYSLOG_FACILITY"] == 4 ||
+                    attributes["SYSLOG_FACILITY"] == 10
                 - type: add
-                  id: rh_rhtap_stage_mpc_idx
+                  id: {{ .index }}_idx
                   field: attributes["com.splunk.index"]
                   value: {{ .index }}
                   on_error: send
@@ -144,16 +156,21 @@ spec:
           service:
             extensions:
               - file_storage/otc
+            telemetry:
+              logs:
+                level: error
+                disable_stacktrace: true
             pipelines:
               logs:
                 processors:
                   - resource/add_appcode
+                  - resource/add_instance_tag
                   - resourcedetection/system
                   - transform/common
                 receivers:
                   # List all your receivers here
                   - filelog/{{ .index }}_audit
-                  - filelog/{{ .index }}_messages
-                  - filelog/{{ .index }}_secure
+                  - journald/{{ .index }}_messages
+                  - journald/{{ .index }}_secure
                 exporters:
                   - splunk_hec/corp
